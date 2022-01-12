@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -312,6 +313,7 @@ func (m *DbMap) readStructColumns(t reflect.Type) (cols []*ColumnMap, primaryKey
 			var defaultValue string
 			var isAuto bool
 			var isPK bool
+			var isJSON bool
 			var isNotNull bool
 			for _, argString := range cArguments[1:] {
 				argString = strings.TrimSpace(argString)
@@ -340,6 +342,8 @@ func (m *DbMap) readStructColumns(t reflect.Type) (cols []*ColumnMap, primaryKey
 					isPK = true
 				case "autoincrement":
 					isAuto = true
+				case "json":
+					isJSON = true
 				case "notnull":
 					isNotNull = true
 				default:
@@ -365,10 +369,19 @@ func (m *DbMap) readStructColumns(t reflect.Type) (cols []*ColumnMap, primaryKey
 				if useHolder {
 					value = scanner.Holder
 					gotype = reflect.TypeOf(value)
+					if isJSON {
+						panic(fmt.Sprintf("gorp: custom scanner defined for json field %v", f.Name))
+					}
 				}
 			}
 			if typer, ok := value.(SqlTyper); ok {
 				gotype = reflect.TypeOf(typer.SqlType())
+
+				if isJSON { // TODO: not sure if this check is in good place
+					value = &json.RawMessage{}
+					gotype = reflect.TypeOf(value)
+				}
+
 			} else if typer, ok := value.(legacySqlTyper); ok {
 				log.Printf("Deprecation Warning: update your SqlType methods to return a driver.Value")
 				gotype = reflect.TypeOf(typer.SqlType())
@@ -388,6 +401,7 @@ func (m *DbMap) readStructColumns(t reflect.Type) (cols []*ColumnMap, primaryKey
 				gotype:       gotype,
 				isPK:         isPK,
 				isAutoIncr:   isAuto,
+				isJSON:       isJSON,
 				isNotNull:    isNotNull,
 				MaxSize:      maxSize,
 			}

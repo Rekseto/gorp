@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -417,6 +418,8 @@ func get(m *DbMap, exec SqlExecutor, i interface{},
 	for x, fieldName := range plan.argFields {
 		f := v.Elem().FieldByName(fieldName)
 		target := f.Addr().Interface()
+		sf, _ := t.FieldByName(fieldName)
+		isJSON := hasTag(sf, "json")
 		if conv != nil {
 			scanner, ok := conv.FromDb(target)
 			if ok {
@@ -424,6 +427,13 @@ func get(m *DbMap, exec SqlExecutor, i interface{},
 				custScan = append(custScan, scanner)
 			}
 		}
+
+		if isJSON {
+			scanner := newJsonScanner(target)
+			target = scanner.Holder
+			custScan = append(custScan, scanner)
+		}
+
 		dest[x] = target
 	}
 
@@ -669,4 +679,35 @@ func begin(m *DbMap) (*sql.Tx, error) {
 	}
 
 	return m.Db.Begin()
+}
+
+func hasTag(sf reflect.StructField, name string) bool {
+	all_tags := strings.Split(sf.Tag.Get("db"), ",")
+	for _, i := range all_tags {
+		if i == name {
+			return true
+		}
+	}
+	return false
+}
+
+func newJsonScanner(target interface{}) CustomScanner {
+	return CustomScanner{
+		Holder: new([]byte),
+		Target: target,
+		Binder: func(holder, target interface{}) error {
+			sptr := holder.(*[]byte)
+			if *sptr == nil {
+				targetValue := reflect.ValueOf(target).Elem()
+				targetType := targetValue.Type()
+				if targetType.Kind() != reflect.Ptr {
+					return fmt.Errorf("gorp: select of json null value requires pointer struct field, got %s", targetType.String())
+				}
+				targetValue.Set(reflect.Zero(targetType))
+				return nil
+			}
+			err := json.Unmarshal(*sptr, target)
+			return err
+		},
+	}
 }

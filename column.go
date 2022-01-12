@@ -33,6 +33,7 @@ type ColumnMap struct {
 	fieldName  string
 	gotype     reflect.Type
 	isPK       bool
+	isJSON     bool
 	isAutoIncr bool
 	isNotNull  bool
 }
