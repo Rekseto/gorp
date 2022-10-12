@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+type TransactionDefer func(commited bool) (err error)
+
 // Transaction represents a database transaction.
 // Insert/Update/Delete/Get/Exec operations will be run in the context
 // of that transaction.  Transactions should be terminated with
@@ -19,6 +21,7 @@ type Transaction struct {
 	dbmap  *DbMap
 	tx     *sql.Tx
 	closed bool
+	defers []TransactionDefer
 }
 
 func (t *Transaction) WithContext(ctx context.Context) SqlExecutor {
@@ -146,7 +149,19 @@ func (t *Transaction) Commit() error {
 			now := time.Now()
 			defer t.dbmap.trace(now, "commit;")
 		}
-		return t.tx.Commit()
+		err := t.tx.Commit()
+		if err != nil {
+			for _, f := range t.defers {
+				f(false)
+			}
+
+			return err
+		}
+
+		for _, f := range t.defers {
+			f(true)
+		}
+
 	}
 
 	return sql.ErrTxDone
@@ -160,6 +175,11 @@ func (t *Transaction) Rollback() error {
 			now := time.Now()
 			defer t.dbmap.trace(now, "rollback;")
 		}
+
+		for _, f := range t.defers {
+			f(false)
+		}
+
 		return t.tx.Rollback()
 	}
 
@@ -236,4 +256,8 @@ func (t *Transaction) Query(q string, args ...interface{}) (*sql.Rows, error) {
 		defer t.dbmap.trace(now, q, args...)
 	}
 	return query(t, q, args...)
+}
+
+func (t *Transaction) Defer(f TransactionDefer) {
+	t.defers = append(t.defers, f)
 }
