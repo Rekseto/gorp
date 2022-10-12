@@ -149,6 +149,7 @@ func (t *Transaction) Commit() error {
 			now := time.Now()
 			defer t.dbmap.trace(now, "commit;")
 		}
+
 		err := t.tx.Commit()
 		if err != nil {
 			for _, f := range t.defers {
@@ -162,6 +163,7 @@ func (t *Transaction) Commit() error {
 			f(true)
 		}
 
+		return nil
 	}
 
 	return sql.ErrTxDone
