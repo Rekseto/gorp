@@ -263,3 +263,16 @@ func (t *Transaction) Query(q string, args ...interface{}) (*sql.Rows, error) {
 func (t *Transaction) Defer(f TransactionDefer) {
 	t.defers = append(t.defers, f)
 }
+
+func (t *Transaction) Tx() *sql.Tx {
+	return t.tx
+}
+
+func TransactionFromTx(dbmap *DbMap, tx *sql.Tx) *Transaction {
+	return &Transaction{
+		dbmap:  dbmap,
+		tx:     tx,
+		closed: false,
+		defers: make([]TransactionDefer, 0),
+	}
+}
